@@ -3,6 +3,7 @@
 # Quickstart
 ```bash
 pip install git+https://github.com/tomekkorbak/kl-gpt3.git
+OPENAI_API_KEY=sk-YOURKEY
 ```
 
 ```python

@@ -1,6 +1,8 @@
+import os
+
 import numpy as np
 
-from kl_gpt3 import Batch, GPT3, HFModel
+from kl_gpt3.kl_gpt3 import Batch, GPT3, HFModel
 
 def test_batch_merge():
     batch_1 = Batch(
@@ -30,3 +32,12 @@ def test_hf_gives_consistent_logprobs():
     hf_model = HFModel.from_pretrained('gpt2', max_tokens=128, device=0, generate_batch_size=1, eval_batch_size=1)
     batch = hf_model.sample(num_samples=2)
     assert np.abs(batch.logprobs - hf_model.get_logprobs(batch)) < 1
+
+def test_save_and_load_batch():
+    gpt3 = GPT3(max_tokens=20)
+    gpt3_batch = gpt3.sample(num_samples=20, save_logprobs=True)
+    gpt3_batch.save_to_json('test.json')
+    new_batch = Batch.load_from_json('test.json')
+    assert gpt3_batch.texts == new_batch.texts
+    assert np.isclose(gpt3_batch.logprobs, new_batch.logprobs).all()
+    os.remove('test.json')  # cleanup
