@@ -261,10 +261,3 @@ def evaluate_forward_kl(
             gpt3_batch.save_to_json(cache_file_name)
     hf_logprobs = hf_model_wrapped.get_logprobs(gpt3_batch)
     return (gpt3_batch.logprobs - hf_logprobs).mean()
-
-
-
-gpt2 = AutoModelForCausalLM.from_pretrained('gpt2').to(0)
-kl = evaluate_forward_kl(gpt2, max_tokens=32, num_samples=32, use_cache=False)
-print(kl)
-
