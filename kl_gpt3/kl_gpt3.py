@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, List, Dict
 from dataclasses import dataclass
 from time import sleep
 from pathlib import Path
@@ -19,9 +19,9 @@ CACHE_DIR = Path.home() / '.kl_gpt3/'
 @dataclass
 class Batch:
     model_name: str
-    texts: list[str]
+    texts: List[str]
     logprobs: Optional[np.ndarray] = None
-    token_logprobs: Optional[list[list[float]]] = None
+    token_logprobs: Optional[List[List[float]]] = None
 
     def __len__(self):
         return len(self.texts)
@@ -161,7 +161,7 @@ class HFModel(LanguageModel):
             model_name: str,
             tokenizer_name: Optional[str] = None,
             device: Optional[Union[str, torch.device]] = None,
-            model_kwargs: Optional[dict[str, Any]] = {},
+            model_kwargs: Optional[Dict[str, Any]] = {},
             **kwargs
     ) -> 'HFModel':
         return HFModel(
@@ -202,7 +202,7 @@ class HFModel(LanguageModel):
         return batch
 
     def get_logprobs(self, batch: Batch) -> np.ndarray:
-        logprobs: list[np.ndarray] = []
+        logprobs: List[np.ndarray] = []
         for i in trange(0, len(batch), self.eval_batch_size):
             current_indices = slice(i, i + self.eval_batch_size)
             inputs = self.hf_tokenizer(
