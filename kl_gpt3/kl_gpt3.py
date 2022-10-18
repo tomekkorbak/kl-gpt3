@@ -138,7 +138,7 @@ class HFModel(LanguageModel):
             hf_tokenizer: Optional[PreTrainedTokenizer] = None,
             model_name: Optional[str] = None,
             max_tokens: Optional[int] = 128,
-            generate_batch_size: Optional[int] = 32,
+            generate_batch_size: Optional[int] = 16,
             eval_batch_size: Optional[int] = 32,
             device: Optional[Union[str, torch.device]] = None,
     ):
@@ -153,6 +153,7 @@ class HFModel(LanguageModel):
         self.hf_model.to(self.device)
         if self.hf_tokenizer.pad_token is None:
             self.hf_tokenizer.pad_token = self.hf_tokenizer.eos_token
+            self.hf_tokenizer.pad_token_id = self.hf_tokenizer.eos_token_id
 
     @classmethod
     def from_pretrained(
@@ -176,18 +177,17 @@ class HFModel(LanguageModel):
         batch = Batch(model_name=self.model_name, texts=[], logprobs=[] if save_logprobs else None)
         for _ in range(num_samples // self.generate_batch_size or 1):
             output = self.hf_model.generate(
-                text=[self.hf_tokenizer.bos_token] * self.generate_batch_size,
                 do_sample=True,
                 top_k=0,
                 top_p=1,
-                min_length=2,
+                min_length=3,
                 num_return_sequences=self.generate_batch_size,
                 max_length=self.max_tokens,
                 padding='max_length',
                 return_dict_in_generate=True,
                 output_scores=save_logprobs
             )
-            texts = self.hf_tokenizer.batch_decode(output.sequences, skip_special_tokens=True)
+            texts = self.hf_tokenizer.batch_decode(output.sequences, skip_special_tokens=False)
             if save_logprobs:
                 logits = torch.stack(output.scores, dim=1)
                 attention_mask = output.sequences != self.hf_tokenizer.pad_token_id
@@ -206,7 +206,7 @@ class HFModel(LanguageModel):
         for i in trange(0, len(batch), self.eval_batch_size):
             current_indices = slice(i, i + self.eval_batch_size)
             inputs = self.hf_tokenizer(
-                text=[self.hf_tokenizer.bos_token + text for text in batch.texts[current_indices]],
+                text=batch.texts[current_indices],
                 padding=True,
                 max_length=self.max_tokens,
                 return_tensors="pt"
@@ -245,7 +245,8 @@ def evaluate_forward_kl(
     hf_model_wrapped = HFModel(
         hf_model=hf_model,
         hf_tokenizer=hf_tokenizer,
-        model_name=hf_model_name
+        model_name=hf_model_name,
+        max_tokens=max_tokens
     )
     gpt3 = GPT3(max_tokens=max_tokens)
     if gpt3_batch is None:
@@ -261,3 +262,22 @@ def evaluate_forward_kl(
             gpt3_batch.save_to_json(cache_file_name)
     hf_logprobs = hf_model_wrapped.get_logprobs(gpt3_batch)
     return (gpt3_batch.logprobs - hf_logprobs).mean()
+
+
+def evaluate_reverse_kl(
+        hf_model: PreTrainedModel,
+        hf_tokenizer: Optional[PreTrainedTokenizer] = None,
+        hf_model_name: Optional[str] = None,
+        num_samples: int = 1024,
+        max_tokens: int = 32,
+):
+    hf_model_wrapped = HFModel(
+        hf_model=hf_model,
+        hf_tokenizer=hf_tokenizer,
+        model_name=hf_model_name,
+        max_tokens=max_tokens
+    )
+    gpt3 = GPT3(max_tokens=max_tokens)
+    hf_batch = hf_model_wrapped.sample(num_samples=num_samples, save_logprobs=True)
+    gpt3_logprobs = gpt3.get_logprobs(hf_batch)
+    return (hf_batch.logprobs - gpt3_logprobs).mean()
