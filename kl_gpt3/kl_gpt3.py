@@ -175,7 +175,7 @@ class HFModel(LanguageModel):
     def sample(self, num_samples: int = 32, save_logprobs: bool = True) -> Batch:
         assert num_samples % self.generate_batch_size == 0 or num_samples < self.generate_batch_size
         batch = Batch(model_name=self.model_name, texts=[], logprobs=[] if save_logprobs else None)
-        for _ in range(num_samples // self.generate_batch_size or 1):
+        for _ in trange(num_samples // self.generate_batch_size or 1):
             output = self.hf_model.generate(
                 do_sample=True,
                 top_k=0,
@@ -184,7 +184,8 @@ class HFModel(LanguageModel):
                 num_return_sequences=self.generate_batch_size,
                 max_length=self.max_tokens,
                 return_dict_in_generate=True,
-                output_scores=save_logprobs
+                output_scores=save_logprobs,
+                pad_token_id=self.hf_tokenizer.pad_token_id
             )
             texts = self.hf_tokenizer.batch_decode(output.sequences, skip_special_tokens=False)
             if save_logprobs:
