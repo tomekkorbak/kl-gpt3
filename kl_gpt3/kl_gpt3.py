@@ -81,17 +81,20 @@ class GPT3(LanguageModel):
 
     def get_logprobs(self, batch: Batch) -> np.ndarray:
         assert all(len(text) > 0 for text in batch.texts)
-        response = openai.Completion.create(
-            model=self.model_name,
-            prompt=batch.texts,
-            max_tokens=0,
-            temperature=1,
-            logprobs=1,
-            echo=True
-        )
-        self.total_tokens_used += response.usage.total_tokens
-        token_logprobs = [response.choices[i].logprobs.token_logprobs[1:] for i in range(len(batch))]
-        sequence_logprobs = [np.asarray(logprobs).sum() for logprobs in token_logprobs]
+        sequence_logprobs: List[np.ndarray] = []
+        for i in trange(0, len(batch), self.batch_size):
+            current_indices = slice(i, i + self.batch_size)
+            response = openai.Completion.create(
+                model=self.model_name,
+                prompt=batch.texts[current_indices],
+                max_tokens=0,
+                temperature=1,
+                logprobs=1,
+                echo=True
+            )
+            self.total_tokens_used += response.usage.total_tokens
+            token_logprobs = [response.choices[j].logprobs.token_logprobs[1:] for j in range(self.batch_size)]
+            sequence_logprobs += [np.asarray(logprobs).sum() for logprobs in token_logprobs]
         return np.stack(sequence_logprobs, axis=0)
 
     def sample(self, num_samples: int = 32, save_logprobs: bool = True) -> Batch:
@@ -240,7 +243,8 @@ def evaluate_forward_kl(
         gpt3_batch: Optional[Batch] = None,
         num_samples: int = 1024,
         max_tokens: int = 32,
-        use_cache: bool = True
+        use_cache: bool = True,
+        gpt3_kwargs: Optional[Dict[str, Any]] = None,
 ):
     hf_model_wrapped = HFModel(
         hf_model=hf_model,
@@ -248,7 +252,7 @@ def evaluate_forward_kl(
         model_name=hf_model_name,
         max_tokens=max_tokens
     )
-    gpt3 = GPT3(max_tokens=max_tokens)
+    gpt3 = GPT3(max_tokens=max_tokens, **(gpt3_kwargs or {}))
     if gpt3_batch is None:
         cache_file_name = CACHE_DIR / Path(f'{gpt3.model_name}_{gpt3.max_tokens}_tokens_cache.json')
         if use_cache and cache_file_name.exists():
@@ -270,6 +274,8 @@ def evaluate_reverse_kl(
         hf_model_name: Optional[str] = None,
         num_samples: int = 1024,
         max_tokens: int = 32,
+        hf_prefix: Optional[str] = None,
+        gpt3_kwargs: Optional[Dict[str, Any]] = None,
 ):
     hf_model_wrapped = HFModel(
         hf_model=hf_model,
@@ -277,7 +283,7 @@ def evaluate_reverse_kl(
         model_name=hf_model_name,
         max_tokens=max_tokens
     )
-    gpt3 = GPT3(max_tokens=max_tokens)
+    gpt3 = GPT3(max_tokens=max_tokens, **(gpt3_kwargs or {}))
     hf_batch = hf_model_wrapped.sample(num_samples=num_samples, save_logprobs=True)
     gpt3_logprobs = gpt3.get_logprobs(hf_batch)
     return (hf_batch.logprobs - gpt3_logprobs).mean()
